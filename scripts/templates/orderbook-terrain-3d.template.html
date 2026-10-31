@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<!-- Encrypted Emotions figure · Copyright (c) 2026 okuyama · MIT License -->
+
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>bitFlyer terrain — split banks + canyon walls</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #0b1020; color: #e8eefc; font-family: ui-sans-serif, system-ui, sans-serif; }
+    #ui {
+      position: absolute; left: 12px; top: 12px; z-index: 2;
+      background: rgba(10,14,28,.78); border: 1px solid rgba(255,255,255,.12);
+      border-radius: 10px; padding: 10px 12px; max-width: 420px; backdrop-filter: blur(8px);
+    }
+    #ui.collapsed { max-width: none; padding: 6px 8px; }
+    #ui.collapsed #ui-body { display: none; }
+    #ui-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+    #ui h1 { font-size: 14px; margin: 0; font-weight: 600; flex: 1; }
+    #ui.collapsed h1 { font-size: 12px; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #btn-ui-toggle {
+      appearance: none; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06);
+      color: inherit; border-radius: 6px; padding: 2px 8px; font-size: 12px; cursor: pointer; line-height: 1.4;
+    }
+    #btn-ui-toggle:hover { background: rgba(255,255,255,.12); }
+    #ui p { font-size: 12px; margin: 0 0 8px; opacity: .85; line-height: 1.45; }
+    #ui #ui-body > p:first-child { margin-top: 8px; }
+    #ui .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    button {
+      appearance: none; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06);
+      color: inherit; border-radius: 8px; padding: 6px 10px; font-size: 12px; cursor: pointer;
+    }
+    button:hover { background: rgba(255,255,255,.12); }
+    #c { display: block; width: 100%; height: 100%; }
+    .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; vertical-align:middle; }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <div id="ui-head">
+      <h1>板の地形（南北分離）+ 垂直の川岸</h1>
+      <button type="button" id="btn-ui-toggle" aria-expanded="true" title="パネルを折りたたむ">縮小</button>
+    </div>
+    <div id="ui-body">
+    <p>
+      買い側と売り側を分け、スプレッド帯は標高ゼロの水面。岸は垂直面でつなぐ。標高ゼロに方眼（時間30分・表示は毎時JST、価格は5万円線・10万円表示）。板は表示／不透明度を切替可。
+      R/B＝標高、G＝為替。1分板＝出来高。
+    </p>
+    <p>
+      <span class="swatch" style="background:#5eead4"></span>水面
+      <span class="swatch" style="background:#f8fafc;margin-left:8px"></span>中値
+      <span class="swatch" style="background:#38bdf8;margin-left:8px"></span>SMA
+      <span class="swatch" style="background:#a78bfa;margin-left:8px"></span>BB
+      <span class="swatch" style="background:#fde68a;margin-left:8px"></span>出来高
+    </p>
+    <div class="row">
+      <button type="button" id="btn-top">上から見る</button>
+      <button type="button" id="btn-oblique">斜め</button>
+      <button type="button" id="btn-reset">リセット</button>
+    </div>
+    <div class="row" style="margin-top:8px;align-items:center">
+      <label style="font-size:12px;display:flex;gap:6px;align-items:center;cursor:pointer">
+        <input type="checkbox" id="tog-board" checked /> 板
+      </label>
+      <label style="font-size:12px;display:flex;gap:6px;align-items:center">
+        不透明度
+        <input type="range" id="op-board" min="0" max="100" value="50" style="width:100px" />
+        <span id="op-board-val">50%</span>
+      </label>
+    </div>
+    <div class="row" style="margin-top:6px;align-items:center">
+      <label style="font-size:12px;display:flex;gap:6px;align-items:center;cursor:pointer">
+        <input type="checkbox" id="tog-gates" checked /> 出来高の門
+      </label>
+      <label style="font-size:12px;display:flex;gap:6px;align-items:center;cursor:pointer">
+        <input type="checkbox" id="tog-water" checked /> 水面
+      </label>
+      <label style="font-size:12px;display:flex;gap:6px;align-items:center;cursor:pointer">
+        <input type="checkbox" id="tog-grid" checked /> 方眼
+      </label>
+    </div>
+    <div class="row" style="margin-top:6px;align-items:center">
+      <label style="font-size:12px;display:flex;gap:6px;align-items:center;cursor:pointer">
+        <input type="checkbox" id="tog-mid" checked /> 中値
+      </label>
+      <label style="font-size:12px;display:flex;gap:6px;align-items:center;cursor:pointer">
+        <input type="checkbox" id="tog-sma" checked /> SMA5/20
+      </label>
+      <label style="font-size:12px;display:flex;gap:6px;align-items:center;cursor:pointer">
+        <input type="checkbox" id="tog-bb" checked /> BB
+      </label>
+      <label style="font-size:12px;display:flex;gap:6px;align-items:center;cursor:pointer">
+        <input type="checkbox" id="tog-floor-vol" checked /> 底面出来高
+      </label>
+    </div>
+    <p id="meta" style="margin-top:8px;margin-bottom:0"></p>
+    </div>
+  </div>
+  <canvas id="c"></canvas>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const DATA = __DATA__;
+
+const canvas = document.getElementById('c');
+document.getElementById('meta').textContent =
+  `${DATA.t0Label} → ${DATA.t1Label} · gates ${DATA.gates.length} · max1m出来高 ${DATA.maxGateVolume.toFixed(2)} BTC`;
+
+{
+  const ui = document.getElementById('ui');
+  const btn = document.getElementById('btn-ui-toggle');
+  btn.onclick = () => {
+    const collapsed = ui.classList.toggle('collapsed');
+    btn.textContent = collapsed ? '展開' : '縮小';
+    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    btn.title = collapsed ? 'パネルを展開する' : 'パネルを折りたたむ';
+  };
+}
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x0b1020, 1);
+
+const scene = new THREE.Scene();
+// scene.fog disabled — was washing out far-side colors
+// scene.fog = new THREE.Fog(0x0b1020, 80, 160);
+const camera = new THREE.PerspectiveCamera(45, 2, 0.1, 500);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+
+scene.add(new THREE.HemisphereLight(0xdbeafe, 0x334155, 1.25));
+scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+const dir = new THREE.DirectionalLight(0xffffff, 0.85);
+dir.position.set(30, 50, 20);
+scene.add(dir);
+const fill = new THREE.DirectionalLight(0x93c5fd, 0.45);
+fill.position.set(-25, 30, -20);
+scene.add(fill);
+
+const SX = 48, SZ = 36, SY = 7, SY_GATE = 5;
+const WATER_Y = 0.0;
+
+function xOf(t) { return (t / (DATA.nTime - 1) - 0.5) * SX; }
+function zOfPrice(price) {
+  return ((price - DATA.price0) / (DATA.price1 - DATA.price0) - 0.5) * SZ;
+}
+function zOfIndex(i) {
+  const price = DATA.price0 + (i + 0.5) * DATA.bin;
+  return zOfPrice(price);
+}
+function sideAt(t, i) {
+  if (DATA.side) return DATA.side[t * DATA.nPrice + i];
+  return DATA.water[t * DATA.nPrice + i] === 1 ? 0 : (zOfIndex(i) < zOfPrice(DATA.riverMid[t]) ? -1 : 1);
+}
+function heightAt(t, i) {
+  return DATA.heights[t * DATA.nPrice + i] * SY;
+}
+/** nearest land cell height on the river bank (south=-1 / north=+1) */
+function bankHeight(t, wantSide) {
+  if (wantSide < 0) {
+    for (let i = DATA.nPrice - 1; i >= 0; i--) {
+      if (sideAt(t, i) === -1) return heightAt(t, i);
+    }
+  } else {
+    for (let i = 0; i < DATA.nPrice; i++) {
+      if (sideAt(t, i) === 1) return heightAt(t, i);
+    }
+  }
+  return 0;
+}
+
+const landMat = new THREE.MeshStandardMaterial({
+  vertexColors: true, flatShading: false, metalness: 0.05, roughness: 0.75, side: THREE.DoubleSide,
+  transparent: true, opacity: 0.5, depthWrite: true,
+});
+
+function buildBankMesh(wantSide) {
+  const positions = [];
+  const colors = [];
+  const indices = [];
+  const vertIndex = new Map();
+
+  function addVert(t, i) {
+    const key = t * DATA.nPrice + i;
+    if (vertIndex.has(key)) return vertIndex.get(key);
+    const idx = positions.length / 3;
+    const hNorm = DATA.heights[key];
+    const gFx = DATA.fxNorm[t];
+    positions.push(xOf(t), hNorm * SY, zOfIndex(i));
+    colors.push(0.12 + 0.80 * hNorm, 0.08 + 0.82 * gFx, 0.85 - 0.70 * hNorm);
+    vertIndex.set(key, idx);
+    return idx;
+  }
+
+  for (let t = 0; t < DATA.nTime - 1; t++) {
+    for (let i = 0; i < DATA.nPrice - 1; i++) {
+      const cells = [[t, i], [t + 1, i], [t, i + 1], [t + 1, i + 1]];
+      if (!cells.every(([tt, ii]) => sideAt(tt, ii) === wantSide)) continue;
+      const a = addVert(t, i);
+      const b = addVert(t + 1, i);
+      const c = addVert(t, i + 1);
+      const d = addVert(t + 1, i + 1);
+      indices.push(a, b, c, b, d, c);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return new THREE.Mesh(geo, landMat);
+}
+
+const boardGroup = new THREE.Group();
+boardGroup.name = 'board';
+boardGroup.add(buildBankMesh(-1));
+boardGroup.add(buildBankMesh(1));
+scene.add(boardGroup);
+
+// flat water ribbon
+{
+  const positions = [];
+  const colors = [];
+  const indices = [];
+  for (let t = 0; t < DATA.nTime; t++) {
+    const gFx = DATA.fxNorm[t];
+    const r = 0.18, g = 0.55 + 0.40 * gFx, b = 0.82;
+    positions.push(xOf(t), WATER_Y, zOfPrice(DATA.riverLo[t]));
+    colors.push(r, g, b);
+    positions.push(xOf(t), WATER_Y, zOfPrice(DATA.riverHi[t]));
+    colors.push(r, g, b);
+  }
+  for (let t = 0; t < DATA.nTime - 1; t++) {
+    const a = t * 2, b = a + 1, c = a + 2, d = a + 3;
+    indices.push(a, c, b, b, c, d);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  const waterMesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+    vertexColors: true, metalness: 0.25, roughness: 0.25,
+    transparent: true, opacity: 0.95, side: THREE.DoubleSide,
+  }));
+  const waterGroup = new THREE.Group();
+  waterGroup.name = 'water';
+  waterGroup.add(waterMesh);
+  scene.add(waterGroup);
+}
+
+// vertical canyon walls: bank top → water along riverLo / riverHi
+function buildCliff(wantSide) {
+  const positions = [];
+  const colors = [];
+  const indices = [];
+  const prices = wantSide < 0 ? DATA.riverLo : DATA.riverHi;
+
+  for (let t = 0; t < DATA.nTime; t++) {
+    const x = xOf(t);
+    const z = zOfPrice(prices[t]);
+    const yTop = Math.max(bankHeight(t, wantSide), 0.02);
+    const hNorm = Math.min(1, yTop / SY);
+    const gFx = DATA.fxNorm[t];
+    const r = 0.10 + 0.55 * hNorm;
+    const g = 0.06 + 0.55 * gFx;
+    const b = 0.70 - 0.45 * hNorm;
+    // top then bottom
+    positions.push(x, yTop, z);
+    colors.push(r, g, b);
+    positions.push(x, WATER_Y, z);
+    colors.push(r * 0.55, g * 0.7, Math.min(1, b + 0.15));
+  }
+  for (let t = 0; t < DATA.nTime - 1; t++) {
+    const a = t * 2;     // top t
+    const b = a + 1;     // bottom t
+    const c = a + 2;     // top t+1
+    const d = a + 3;     // bottom t+1
+    // outward-facing depends on side; DoubleSide so either winding is fine
+    indices.push(a, c, b, b, c, d);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return new THREE.Mesh(geo, cliffMat);
+}
+const cliffMat = new THREE.MeshStandardMaterial({
+  vertexColors: true,
+  flatShading: true,
+  metalness: 0.08,
+  roughness: 0.8,
+  side: THREE.DoubleSide,
+  transparent: true, opacity: 0.5, depthWrite: true,
+});
+boardGroup.add(buildCliff(-1));
+boardGroup.add(buildCliff(1));
+
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(SX * 1.15, SZ * 1.15),
+  new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 1, transparent: true, opacity: 0.5 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.02;
+scene.add(ground);
+
+// 標高ゼロの方眼 + 時刻／価格目盛り
+{
+  const GRID_EVERY_MIN = 30;
+  const PRICE_GRID_STEP = 50000;   // 線: 5万円おき
+  const PRICE_LABEL_STEP = 100000; // 文字: 10万円おき
+  const y = WATER_Y + 0.003;
+  const positions = [];
+
+  function parsePathLabel(lab) {
+    const p = lab.split('/').map(Number);
+    return Date.UTC(2026, p[0] - 1, p[1], p[2], p[3], 0);
+  }
+  function fmtHM(ms) {
+    // path timestamps are UTC; show Japan time (UTC+9)
+    const j = new Date(ms + 9 * 3600 * 1000);
+    const hh = String(j.getUTCHours()).padStart(2, '0');
+    const mm = String(j.getUTCMinutes()).padStart(2, '0');
+    return `${hh}:${mm}`;
+  }
+  function fmtPrice(p) {
+    // e.g. 1200万
+    const man = Math.round(p / 10000);
+    return `${man.toLocaleString('ja-JP')}万`;
+  }
+
+  // --- price grid lines at round yen ---
+  const priceMarks = [];
+  let pFirst = Math.ceil(DATA.price0 / PRICE_GRID_STEP) * PRICE_GRID_STEP;
+  for (let p = pFirst; p <= DATA.price1 + 1e-6; p += PRICE_GRID_STEP) {
+    const z = zOfPrice(p);
+    positions.push(-SX * 0.5, y, z, SX * 0.5, y, z);
+    priceMarks.push({ price: p, z });
+  }
+
+  // --- time grid lines at :00 / :30 ---
+  const t0ms = parsePathLabel(DATA.t0Label);
+  const t1ms = parsePathLabel(DATA.t1Label);
+  const spanMin = (t1ms - t0ms) / 60000;
+  const stepMs = GRID_EVERY_MIN * 60000;
+  let first = Math.ceil(t0ms / stepMs) * stepMs;
+  if (first < t0ms) first += stepMs;
+  const timeMarks = [];
+  for (let ms = first; ms <= t1ms + 1e-6; ms += stepMs) {
+    const m = (ms - t0ms) / 60000;
+    const tIndex = Math.min(
+      DATA.nTime - 1,
+      Math.max(0, Math.round(m / Math.max(spanMin, 1) * (DATA.nTime - 1)))
+    );
+    timeMarks.push({ tIndex, x: xOf(tIndex), label: fmtHM(ms), m });
+    positions.push(xOf(tIndex), y, -SZ * 0.5, xOf(tIndex), y, SZ * 0.5);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  const grid = new THREE.LineSegments(
+    geo,
+    new THREE.LineBasicMaterial({
+      color: 0xcbd5e1,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false,
+    })
+  );
+  grid.renderOrder = -1;
+  const gridGroup = new THREE.Group();
+  gridGroup.name = 'grid';
+  gridGroup.add(grid);
+  scene.add(gridGroup);
+
+  function makeAxisSprite(text, scaleX = 2.4, scaleY = 0.96) {
+    const c = document.createElement('canvas');
+    c.width = 192;
+    c.height = 64;
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.fillStyle = 'rgba(15,23,42,0.65)';
+    ctx.fillRect(6, 12, 180, 40);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '600 26px ui-sans-serif, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 96, 32);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: tex, transparent: true, depthWrite: false, depthTest: true,
+    }));
+    spr.scale.set(scaleX, scaleY, 1);
+    return spr;
+  }
+
+  // time labels: hourly :00 only, along +Z edge
+  const labelZs = [SZ * 0.5 + 1.6, -SZ * 0.5 - 1.6];
+  for (const mark of timeMarks) {
+    if (!mark.label.endsWith(':00')) continue;
+    for (const labelZ of labelZs) {
+      const spr = makeAxisSprite(mark.label);
+      spr.position.set(mark.x, WATER_Y + 0.05, labelZ);
+      scene.add(spr);
+    }
+  }
+
+  // price labels: every 10 man yen, both time ends (−X / +X)
+  const labelXs = [-SX * 0.5 - 2.2, SX * 0.5 + 2.2];
+  for (const mark of priceMarks) {
+    if (Math.round(mark.price) % PRICE_LABEL_STEP !== 0) continue;
+    for (const labelX of labelXs) {
+      const spr = makeAxisSprite(fmtPrice(mark.price), 2.8, 0.96);
+      spr.position.set(labelX, WATER_Y + 0.05, mark.z);
+      scene.add(spr);
+    }
+  }
+
+  document.getElementById('meta').textContent +=
+    ` · 時間方眼 ${GRID_EVERY_MIN}分 JST / 価格 ${PRICE_LABEL_STEP / 10000}万円表示`;
+}
+
+const riverPts = [];
+for (let t = 0; t < DATA.nTime; t++) {
+  riverPts.push(new THREE.Vector3(xOf(t), 0.06, zOfPrice(DATA.riverMid[t])));
+}
+scene.add(new THREE.Mesh(
+  new THREE.TubeGeometry(new THREE.CatmullRomCurve3(riverPts, false, 'catmullrom', 0.15), Math.max(80, DATA.nTime * 2), 0.08, 8, false),
+  new THREE.MeshStandardMaterial({
+    color: 0x99f6e4, emissive: 0x2dd4bf, emissiveIntensity: 0.7, metalness: 0.15, roughness: 0.35,
+  })
+));
+
+function makeEdge(prices, y) {
+  const pts = prices.map((p, t) => new THREE.Vector3(xOf(t), y, zOfPrice(p)));
+  return new THREE.Mesh(
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.15), Math.max(80, DATA.nTime * 2), 0.04, 6, false),
+    new THREE.MeshBasicMaterial({ color: 0x5eead4, transparent: true, opacity: 0.55 })
+  );
+}
+scene.add(makeEdge(DATA.riverLo, 0.04));
+scene.add(makeEdge(DATA.riverHi, 0.04));
+
+const gateMat = new THREE.MeshStandardMaterial({
+  color: 0xfde68a, emissive: 0xb45309, emissiveIntensity: 0.25,
+  metalness: 0.1, roughness: 0.55, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: true,
+});
+const gateGroup = new THREE.Group();
+gateGroup.name = 'gates';
+DATA.gates.forEach((g) => {
+  if ((g.volNorm || 0) <= 0) return;
+  const x = xOf(g.tIndex);
+  const z = zOfPrice(g.mid);
+  let spreadW = Math.abs(zOfPrice(g.best_ask) - zOfPrice(g.best_bid));
+  spreadW = Math.max(spreadW, 0.18);
+  const h = Math.max(0.12, (g.volNorm || 0) * SY_GATE);
+  const dx = (g.dirTime || 1) / Math.max(1, DATA.nTime - 1) * SX;
+  const dz = ((g.dirPrice || 0) / (DATA.price1 - DATA.price0)) * SZ;
+  const angle = Math.atan2(dz, dx);
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.06, h, spreadW), gateMat);
+  mesh.position.set(x, h / 2, z);
+  mesh.rotation.y = -angle;
+  gateGroup.add(mesh);
+  const edge = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, spreadW), new THREE.MeshBasicMaterial({ color: 0xfff7ed, transparent: true, opacity: 0.5, depthWrite: true }));
+  edge.position.set(x, h + 0.02, z);
+  edge.rotation.y = -angle;
+  gateGroup.add(edge);
+});
+scene.add(gateGroup);
+
+// --- floor chart: mid / SMA / Bollinger / volume bars ---
+const FLOOR_Y = 0.025;
+const floorChartGroup = new THREE.Group();
+floorChartGroup.name = 'floorChart';
+scene.add(floorChartGroup);
+
+function smaSeries(arr, period) {
+  const out = new Array(arr.length).fill(null);
+  let sum = 0;
+  for (let i = 0; i < arr.length; i++) {
+    sum += arr[i];
+    if (i >= period) sum -= arr[i - period];
+    if (i >= period - 1) out[i] = sum / period;
+  }
+  return out;
+}
+function stdevSeries(arr, period, means) {
+  const out = new Array(arr.length).fill(null);
+  for (let i = period - 1; i < arr.length; i++) {
+    const m = means[i];
+    let s = 0;
+    for (let j = i - period + 1; j <= i; j++) {
+      const d = arr[j] - m;
+      s += d * d;
+    }
+    out[i] = Math.sqrt(s / period);
+  }
+  return out;
+}
+function addPriceTube(prices, color, radius, opacity = 0.95) {
+  const pts = [];
+  for (let t = 0; t < prices.length; t++) {
+    if (prices[t] == null || !Number.isFinite(prices[t])) continue;
+    pts.push(new THREE.Vector3(xOf(t), FLOOR_Y, zOfPrice(prices[t])));
+  }
+  if (pts.length < 2) return null;
+  const mesh = new THREE.Mesh(
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.1), Math.max(40, pts.length * 2), radius, 6, false),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false })
+  );
+  floorChartGroup.add(mesh);
+  return mesh;
+}
+
+const mids = DATA.riverMid.slice();
+const sma5 = smaSeries(mids, 5);
+const sma20 = smaSeries(mids, 20);
+const sma20means = sma20;
+const sd20 = stdevSeries(mids, 20, sma20means);
+const bbUp = mids.map((_, i) => (sma20[i] != null && sd20[i] != null ? sma20[i] + 2 * sd20[i] : null));
+const bbLo = mids.map((_, i) => (sma20[i] != null && sd20[i] != null ? sma20[i] - 2 * sd20[i] : null));
+
+const floorMid = addPriceTube(mids, 0xf8fafc, 0.055, 0.98);
+const floorSma5 = addPriceTube(sma5, 0x38bdf8, 0.04, 0.9);
+const floorSma20 = addPriceTube(sma20, 0x0284c7, 0.04, 0.9);
+const floorBbUp = addPriceTube(bbUp, 0xa78bfa, 0.03, 0.75);
+const floorBbLo = addPriceTube(bbLo, 0xa78bfa, 0.03, 0.75);
+
+// BB fill ribbon between consecutive valid samples
+const bbFillGroup = new THREE.Group();
+{
+  const positions = [];
+  const indices = [];
+  for (let t = 1; t < DATA.nTime; t++) {
+    if (bbUp[t] == null || bbLo[t] == null || bbUp[t - 1] == null || bbLo[t - 1] == null) continue;
+    const base = positions.length / 3;
+    positions.push(
+      xOf(t - 1), FLOOR_Y + 0.001, zOfPrice(bbLo[t - 1]),
+      xOf(t - 1), FLOOR_Y + 0.001, zOfPrice(bbUp[t - 1]),
+      xOf(t), FLOOR_Y + 0.001, zOfPrice(bbLo[t]),
+      xOf(t), FLOOR_Y + 0.001, zOfPrice(bbUp[t]),
+    );
+    indices.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
+  }
+  if (indices.length) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    bbFillGroup.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      color: 0xa78bfa, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false,
+    })));
+  }
+}
+floorChartGroup.add(bbFillGroup);
+
+// floor volume: bar chart from the date/time edge toward +price (Z), not on the river
+const floorVolGroup = new THREE.Group();
+{
+  const vols = DATA.gates.map((g) => g.volume || 0);
+  const vmax = Math.max(...vols, 1e-9);
+  const barW = Math.max(0.06, SX / Math.max(DATA.nTime, 1) * 0.7);
+  const maxLen = SZ * 0.22; // how far into the price axis bars can grow
+  const zBase = -SZ * 0.5 + 0.15; // along the "date" edge of the floor
+  const volMat = new THREE.MeshBasicMaterial({
+    color: 0xfbbf24, transparent: true, opacity: 0.65, depthWrite: false,
+  });
+  DATA.gates.forEach((g, i) => {
+    const v = g.volume || 0;
+    if (v <= 0) return;
+    const len = (v / vmax) * maxLen;
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(barW, 0.04, len), volMat);
+    mesh.position.set(xOf(g.tIndex ?? i), FLOOR_Y + 0.02, zBase + len / 2);
+    floorVolGroup.add(mesh);
+  });
+}
+floorChartGroup.add(floorVolGroup);
+
+const floorLayers = {
+  mid: [floorMid],
+  sma: [floorSma5, floorSma20],
+  bb: [floorBbUp, floorBbLo, bbFillGroup],
+  vol: [floorVolGroup],
+};
+function setFloorVisible(key, on) {
+  (floorLayers[key] || []).forEach((obj) => { if (obj) obj.visible = on; });
+}
+
+function setTopView() {
+  // straight above center; +Z (price) = screen up, +X (time) = screen right
+  camera.up.set(0, 0, 1);
+  camera.position.set(0, 55, 0);
+  controls.target.set(0, 0, 0);
+  controls.update();
+  camera.lookAt(0, 0, 0);
+}
+function setOblique() {
+  camera.up.set(0, 1, 0);
+  camera.position.set(28, 22, 30);
+  controls.target.set(0, 1, 0);
+  controls.update();
+}
+document.getElementById('btn-top').onclick = setTopView;
+document.getElementById('btn-oblique').onclick = setOblique;
+document.getElementById('btn-reset').onclick = setTopView;
+
+function setBoardOpacity(pct) {
+  const o = Math.max(0, Math.min(1, pct / 100));
+  landMat.opacity = o;
+  landMat.transparent = o < 0.999;
+  cliffMat.opacity = o;
+  cliffMat.transparent = o < 0.999;
+  const label = document.getElementById('op-board-val');
+  if (label) label.textContent = `${Math.round(o * 100)}%`;
+}
+document.getElementById('tog-board').onchange = (e) => {
+  boardGroup.visible = e.target.checked;
+};
+document.getElementById('op-board').oninput = (e) => {
+  setBoardOpacity(Number(e.target.value));
+};
+document.getElementById('tog-gates').onchange = (e) => {
+  gateGroup.visible = e.target.checked;
+};
+document.getElementById('tog-water').onchange = (e) => {
+  waterGroup.visible = e.target.checked;
+};
+document.getElementById('tog-grid').onchange = (e) => {
+  gridGroup.visible = e.target.checked;
+};
+document.getElementById('tog-mid').onchange = (e) => setFloorVisible('mid', e.target.checked);
+document.getElementById('tog-sma').onchange = (e) => setFloorVisible('sma', e.target.checked);
+document.getElementById('tog-bb').onchange = (e) => setFloorVisible('bb', e.target.checked);
+document.getElementById('tog-floor-vol').onchange = (e) => setFloorVisible('vol', e.target.checked);
+setBoardOpacity(Number(document.getElementById('op-board').value));
+setTopView();
+
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w || canvas.height !== h) {
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+}
+function frame() {
+  resize();
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+frame();
+  </script>
+</body>
+</html>
